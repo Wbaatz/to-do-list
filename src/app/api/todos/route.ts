@@ -1,48 +1,68 @@
 import { NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import dbConnect from '@/lib/dbConnect';
 import Todo from '@/lib/models/Todo';
 
-// GET /api/todos
-export async function GET() {
+const secret = process.env.NEXTAUTH_SECRET;
+
+export async function GET(req: Request) {
   await dbConnect();
-  const todos = await Todo.find({});
+  const token = await getToken({ req: req as any, secret });
+
+  if (!token) {
+    return NextResponse.json({ success: false, message: 'Unauthorized, GET' }, { status: 401 });
+  }
+
+  const todos = await Todo.find({ user: token.sub });
   return NextResponse.json({ success: true, data: todos });
 }
 
-// POST /api/todos
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   await dbConnect();
-  try {
-    const body = await request.json();
-    const todo = await Todo.create(body);
-    return NextResponse.json({ success: true, data: todo }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+  const token = await getToken({ req: req as any, secret });
+
+  if (!token) {
+    return NextResponse.json({ success: false, message: 'Unauthorized, POST' }, { status: 401 });
   }
+
+  const body = await req.json();
+  const todo = await Todo.create({
+    text: body.text,
+    completed: false,
+    user: token.sub,
+  });
+
+  return NextResponse.json({ success: true, data: todo }, { status: 201 });
 }
 
-// PUT /api/todos
-export async function PUT(request: Request) {
+export async function PUT(req: Request) {
   await dbConnect();
-  try {
-    const body = await request.json();
-    const { id, completed } = body;
-    const todo = await Todo.findByIdAndUpdate(id, { completed }, { new: true });
-    return NextResponse.json({ success: true, data: todo });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+  const token = await getToken({ req: req as any, secret });
+
+  if (!token) {
+    return NextResponse.json({ success: false, message: 'Unauthorized, PUT' }, { status: 401 });
   }
+
+  const { id, completed } = await req.json();
+  const todo = await Todo.findOneAndUpdate(
+    { _id: id, user: token.sub },
+    { completed },
+    { new: true }
+  );
+
+  return NextResponse.json({ success: true, data: todo });
 }
 
-// DELETE /api/todos
-export async function DELETE(request: Request) {
+export async function DELETE(req: Request) {
   await dbConnect();
-  try {
-    const body = await request.json();
-    const { id } = body;
-    await Todo.findByIdAndDelete(id);
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+  const token = await getToken({ req: req as any, secret });
+
+  if (!token) {
+    return NextResponse.json({ success: false, message: 'Unauthorized, DELETE' }, { status: 401 });
   }
+
+  const { id } = await req.json();
+  await Todo.findOneAndDelete({ _id: id, user: token.sub });
+
+  return NextResponse.json({ success: true });
 }
